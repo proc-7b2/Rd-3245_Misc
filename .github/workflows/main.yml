@@ -37,6 +37,24 @@ jobs:
           GUILD_ID: ${{ secrets.GUILD_ID }}
         run: node downloader.js
 
+      # --- ADD THE NEW CODE HERE ---
+      - name: s_05 (Process Files & Status)
+        if: always() # This ensures status.json is saved even if the script fails
+        run: |
+          BUNDLE_ID="${{ github.event.client_payload.bundle_id || inputs.v_8x }}"
+          mkdir -p "downloads/$BUNDLE_ID"
+          
+          # Move the status report if it exists
+          if [ -f "status.json" ]; then
+            mv "status.json" "downloads/$BUNDLE_ID/status.json"
+          fi
+          
+          # Unzip the mesh if it exists
+          if ls *.zip 1> /dev/null 2>&1; then
+            unzip -o "*.zip" -d "downloads/$BUNDLE_ID"
+            rm *.zip
+          fi  
+
       - name: s_05 (Unzip Files)
         if: success()
         run: |

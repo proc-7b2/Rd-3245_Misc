@@ -11,25 +11,25 @@ on:
 jobs:
   run_job_z8:
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # Added safety timeout
+    timeout-minutes: 15
     permissions:
       contents: write
 
     steps:
-      - name: s_01
+      - name: s_01 (Checkout)
         uses: actions/checkout@v4
 
-      - name: s_02
+      - name: s_02 (Setup)
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: s_03
+      - name: s_03 (Deps)
         run: |
-          npm install playwright axios
+          npm install playwright
           npx playwright install --with-deps chromium
 
-      - name: s_04
+      - name: s_04 (Run Automator)
         env:
           BUNDLE_ID: ${{ github.event.client_payload.bundle_id || inputs.v_8x }}
           DISCORD_TOKEN: ${{ secrets.ALT_DISCORD_TOKEN }}
@@ -37,11 +37,26 @@ jobs:
           GUILD_ID: ${{ secrets.GUILD_ID }}
         run: node downloader.js
 
-      - name: s_05
+      - name: s_05 (Unzip Files)
+        if: success()
+        run: |
+          BUNDLE_ID="${{ github.event.client_payload.bundle_id || inputs.v_8x }}"
+          mkdir -p "downloads/$BUNDLE_ID"
+          unzip -o "*.zip" -d "downloads/$BUNDLE_ID"
+          rm *.zip # Cleanup the zip to keep repo clean
+
+      - name: s_06 (Commit & Push)
         if: success()
         run: |
           git config user.name "sys-worker-42"
           git config user.email "worker@null.com"
           git add .
-          git commit -m "upd_$(date +%s)" || echo "n_a"
+          git commit -m "added_bundle_${{ github.event.client_payload.bundle_id || inputs.v_8x }}" || echo "no_changes"
           git push
+
+      - name: s_07 (Error Artifact)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: discord-debug
+          path: error_debug.png

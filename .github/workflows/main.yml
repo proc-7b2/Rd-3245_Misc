@@ -1,1 +1,37 @@
+name: wiu29ujsw
+on:
+  repository_dispatch:
+    types: [trigger-bundle-download] # This MUST match the 'Event Type' in n8n
 
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Allows GitHub to save the zip back to your repo
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install axios
+
+      - name: Run Downloader Script
+        env:
+          # This pulls the ID from the n8n JSON payload
+          BUNDLE_ID: ${{ github.event.client_payload.bundle_id }}
+        run: node Downloader.js
+
+      - name: Save Files to Repo
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p bundles/${{ github.event.client_payload.bundle_id }}
+          mv *.rbxm bundles/${{ github.event.client_payload.bundle_id }}/ || echo "No files found"
+          git add .
+          git commit -m "Added assets for Bundle ${{ github.event.client_payload.bundle_id }}"
+          git push

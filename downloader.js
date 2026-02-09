@@ -12,6 +12,14 @@ async function run() {
     const context = await browser.newContext();
     const page = await context.newPage();
 
+    // Initial status template
+    let statusData = {
+        bundleId: bundleId,
+        status: "Pending",
+        message: "",
+        timestamp: new Date().toISOString()
+    };
+
     try {
         console.log("🌐 Navigating to Discord...");
         await page.goto('https://discord.com/login');
@@ -42,41 +50,48 @@ async function run() {
 
         console.log("⏳ Waiting for the download link to appear...");
         
-        // --- IMPROVED SELECTOR ---
-        // This looks for any link (anchor tag) that contains the bundle ID in its text
         const downloadLink = page.locator(`a:has-text("${bundleId}")`).last();
         
-        // Wait up to 5 minutes
-        await downloadLink.waitFor({ state: 'visible', timeout: 300000 });
-        
-        // Small pause to ensure the href attribute is fully populated
-        await page.waitForTimeout(2000);
+        try {
+            // Wait up to 5 minutes
+            await downloadLink.waitFor({ state: 'visible', timeout: 300000 });
+            await page.waitForTimeout(2000);
 
-        const fileUrl = await downloadLink.getAttribute('href');
-        
-        if (!fileUrl) {
-            throw new Error("Link found but could not extract the URL (href).");
+            const fileUrl = await downloadLink.getAttribute('href');
+            if (!fileUrl) throw new Error("Link found but href missing.");
+
+            console.log(`🎯 URL Found: ${fileUrl}`);
+            const response = await axios({ method: 'get', url: fileUrl, responseType: 'arraybuffer' });
+
+            const fileName = `bundle_${bundleId}_render.zip`;
+            fs.writeFileSync(fileName, response.data);
+            
+            statusData.status = "Success";
+            statusData.message = "File downloaded and saved successfully.";
+            console.log(`✅ SUCCESS: Saved ${fileName}`);
+
+        } catch (waitError) {
+            // If the link didn't show up, check if the bot sent an error message text instead
+            const lastMsg = await page.locator('[class*="messageContent"]').last();
+            const errorMsg = await lastMsg.innerText();
+            
+            statusData.status = "Error";
+            statusData.message = errorMsg || "The file cannot be given (Timeout/No link).";
+            
+            // Capture a screenshot so you can see the bot's error message
+            await page.screenshot({ path: 'error_debug.png' });
+            console.log("❌ Bot error captured.");
         }
-
-        console.log(`🎯 URL Found: ${fileUrl}`);
-        console.log("📥 Downloading via axios...");
-
-        const response = await axios({
-            method: 'get',
-            url: fileUrl,
-            responseType: 'arraybuffer'
-        });
-
-        const fileName = `bundle_${bundleId}_render.zip`;
-        fs.writeFileSync(fileName, response.data);
-        console.log(`✅ SUCCESS: Saved ${fileName} (${(response.data.length / 1024 / 1024).toFixed(2)} MB)`);
 
     } catch (err) {
         console.error("❌ Automation Error:", err.message);
-        // This screenshot is vital—it shows us exactly what the bot saw!
         await page.screenshot({ path: 'error_debug.png' });
-        process.exit(1);
+        statusData.status = "System_Error";
+        statusData.message = err.message;
     } finally {
+        // SAVE THE JSON FILE
+        fs.writeFileSync('status.json', JSON.stringify(statusData, null, 4));
+        console.log("📝 status.json saved.");
         await browser.close();
     }
 }

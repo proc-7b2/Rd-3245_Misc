@@ -16,7 +16,6 @@ async function run() {
         console.log("🌐 Navigating to Discord...");
         await page.goto('https://discord.com/login');
 
-        // Inject Token
         await page.evaluate((token) => {
             setInterval(() => {
                 document.body.appendChild(document.createElement`iframe`).contentWindow.localStorage.token = `"${token}"`;
@@ -31,7 +30,6 @@ async function run() {
         const messageBox = page.locator('[role="textbox"]');
         await messageBox.waitFor({ state: 'visible' });
 
-        // Trigger Slash Command
         console.log(`💬 Triggering Slash Command for ID: ${bundleId}`);
         await messageBox.click();
         await page.keyboard.type('/bundle render', { delay: 150 });
@@ -43,15 +41,25 @@ async function run() {
         await page.keyboard.press('Enter');
 
         console.log("⏳ Waiting for the download link to appear...");
-        // This selector targets the specific link text seen in your screenshot
-        const downloadLinkSelector = `a[href*="cdn.discordapp.com/attachments"]:has-text("bundle_${bundleId}")`;
-        const downloadLink = page.locator(downloadLinkSelector);
         
+        // --- IMPROVED SELECTOR ---
+        // This looks for any link (anchor tag) that contains the bundle ID in its text
+        const downloadLink = page.locator(`a:has-text("${bundleId}")`).last();
+        
+        // Wait up to 5 minutes
         await downloadLink.waitFor({ state: 'visible', timeout: 300000 });
         
-        // GRAB URL DIRECTLY (Fast Fix)
+        // Small pause to ensure the href attribute is fully populated
+        await page.waitForTimeout(2000);
+
         const fileUrl = await downloadLink.getAttribute('href');
-        console.log(`🎯 Link found! Starting download via axios...`);
+        
+        if (!fileUrl) {
+            throw new Error("Link found but could not extract the URL (href).");
+        }
+
+        console.log(`🎯 URL Found: ${fileUrl}`);
+        console.log("📥 Downloading via axios...");
 
         const response = await axios({
             method: 'get',
@@ -65,6 +73,7 @@ async function run() {
 
     } catch (err) {
         console.error("❌ Automation Error:", err.message);
+        // This screenshot is vital—it shows us exactly what the bot saw!
         await page.screenshot({ path: 'error_debug.png' });
         process.exit(1);
     } finally {

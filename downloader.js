@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
+const axios = require('axios');
 
 async function run() {
     const token = process.env.DISCORD_TOKEN;
@@ -40,23 +41,26 @@ async function run() {
         await page.keyboard.press('Enter');
 
         console.log("⏳ Waiting for the download link to appear...");
-        const downloadLinkSelector = `a:has-text("bundle_${bundleId}_render.zip")`;
+        // This finds the blue link in the "Only you can see this" message
+        const downloadLinkSelector = `a[href*="cdn.discordapp.com/attachments"]:has-text("bundle_${bundleId}")`;
         const downloadLink = page.locator(downloadLinkSelector);
         
-        // Wait up to 5 mins for the link to show up in chat
         await downloadLink.waitFor({ state: 'visible', timeout: 300000 });
-
-        console.log("🎯 Link found! Starting download...");
         
-        // INCREASED DOWNLOAD TIMEOUT HERE
-        const [download] = await Promise.all([
-            page.waitForEvent('download', { timeout: 300000 }), 
-            downloadLink.click(),
-        ]);
+        // --- FAST DOWNLOAD FIX ---
+        const fileUrl = await downloadLink.getAttribute('href');
+        console.log(`🎯 URL Found: ${fileUrl}`);
+        console.log("📥 Downloading via axios...");
+
+        const response = await axios({
+            method: 'get',
+            url: fileUrl,
+            responseType: 'arraybuffer'
+        });
 
         const fileName = `bundle_${bundleId}_render.zip`;
-        await download.saveAs(fileName);
-        console.log(`✅ SUCCESS: Saved as ${fileName}`);
+        fs.writeFileSync(fileName, response.data);
+        console.log(`✅ SUCCESS: Saved ${fileName} (${(response.data.length / 1024 / 1024).toFixed(2)} MB)`);
 
     } catch (err) {
         console.error("❌ Automation Error:", err.message);

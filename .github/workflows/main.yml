@@ -25,10 +25,14 @@ jobs:
       - name: Install Dependencies
         run: npm install axios
 
-      - name: Run downloader Script
+      - name: Run Downloader Script
         env:
+          # We use the '|' to ensure it's treated as a string even if empty
           BUNDLE_ID: ${{ github.event.client_payload.bundle_id }}
-        run: node downloader.js
+        run: |
+          echo "DEBUG: Raw Payload is -> ${{ toJson(github.event.client_payload) }}"
+          echo "DEBUG: Extracted ID is -> $BUNDLE_ID"
+          node downloader.js
 
       - name: Save Files to Repo
         run: |

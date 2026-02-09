@@ -38,23 +38,21 @@ jobs:
         run: node downloader.js
 
       - name: s_05 (Process Files & Status)
-        if: always() 
+        if: always()
         run: |
           BUNDLE_ID="${{ github.event.client_payload.bundle_id || inputs.v_8x }}"
           mkdir -p "downloads/$BUNDLE_ID"
           
-          # Move status.json if the script created it
-          if [ -f "status.json" ]; then
-            mv "status.json" "downloads/$BUNDLE_ID/status.json"
-          fi
+          # 1. Move the status report
+          [ -f "status.json" ] && mv "status.json" "downloads/$BUNDLE_ID/status.json"
           
-          # ONLY unzip if a zip file actually exists
+          # 2. Move error screenshot if it exists
+          [ -f "error_debug.png" ] && mv "error_debug.png" "downloads/$BUNDLE_ID/error_screenshot.png"
+          
+          # 3. Unzip mesh if it exists
           if ls *.zip 1> /dev/null 2>&1; then
-            echo "Zip found. Extracting..."
             unzip -o "*.zip" -d "downloads/$BUNDLE_ID"
             rm *.zip
-          else
-            echo "No zip file found to extract."
           fi
 
       - name: s_06 (Commit & Push)

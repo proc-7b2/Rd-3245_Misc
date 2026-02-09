@@ -1,79 +1,80 @@
+const { chromium } = require('playwright');
 const fs = require('fs');
-const axios = require('axios');
 const path = require('path');
 
-// Helper for rate-limiting (prevents 429 Too Many Requests)
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+async function run() {
+    const token = process.env.DISCORD_TOKEN;
+    const channelId = process.env.CHANNEL_ID;
+    const guildId = process.env.GUILD_ID;
+    const bundleId = process.env.BUNDLE_ID;
 
-// Setup Logging Directory for "s_06" artifact upload
-const logDir = path.join(__dirname, 'logs');
-if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir);
-}
+    // Create logs folder for debugging
+    if (!fs.existsSync('logs')) fs.mkdirSync('logs');
 
-async function downloadBundle() {
-    // 1. Support both n8n payload (BUNDLE_ID) and Manual Input (TARGET_URL)
-    const bundleId = process.env.BUNDLE_ID || process.env.TARGET_URL;
-
-    if (!bundleId) {
-        const msg = "❌ Error: No Bundle ID provided in environment variables.";
-        console.error(msg);
-        fs.writeFileSync(path.join(logDir, 'error.txt'), msg);
-        process.exit(1);
-    }
-
-    console.log(`🚀 Processing Bundle ID: ${bundleId}`);
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
 
     try {
-        // 2. Add Headers to look like a real browser (Avoids 403 Forbidden)
-        const config = {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'application/json'
+        console.log("🌐 Navigating to Discord...");
+        await page.goto('https://discord.com/login');
+
+        // Inject Token to bypass the login screen
+        await page.evaluate((token) => {
+            function login(token) {
+                setInterval(() => {
+                    document.body.appendChild(document.createElement`iframe`).contentWindow.localStorage.token = `"${token}"`;
+                }, 50);
+                setTimeout(() => { location.reload(); }, 2500);
             }
-        };
+            login(token);
+        }, token);
 
-        // 3. Get Bundle Details
-        const catalogUrl = `https://catalog.roblox.com/v1/bundles/${bundleId}/details`;
-        const response = await axios.get(catalogUrl, config);
-        const items = response.data.items;
+        // Wait for Discord UI to load
+        await page.waitForURL(/.*channels.*/, { timeout: 60000 });
+        console.log("✅ Logged in to Alt Account.");
 
-        console.log(`🔍 Found ${items.length} items. Starting download...`);
+        // Go to the specific Server/Channel
+        await page.goto(`https://discord.com/channels/${guildId}/${channelId}`);
+        
+        // Find the chat box
+        const messageBox = page.locator('[role="textbox"]');
+        await messageBox.waitFor({ state: 'visible' });
 
-        for (const item of items) {
-            // We only want Assets (meshes/textures), not "User" or other types
-            if (item.type === 'Asset') {
-                console.log(`📥 Downloading: ${item.name} (ID: ${item.id})`);
-                
-                const assetUrl = `https://assetdelivery.roblox.com/v1/asset/?id=${item.id}`;
-                const assetData = await axios.get(assetUrl, { 
-                    responseType: 'arraybuffer',
-                    headers: config.headers 
-                });
+        console.log(`💬 Sending Command: !download ${bundleId}`);
+        await messageBox.fill(`!download ${bundleId}`);
+        await page.keyboard.press('Enter');
 
-                // Clean the filename so it doesn't break Linux/Windows filesystems
-                const safeName = item.name.replace(/[^a-z0-9]/gi, '_');
-                const fileName = `${safeName}_${item.id}.rbxm`;
+        // ⏳ Wait for the bot to upload a file (intercepting the CDN link)
+        console.log("⏳ Waiting for bot response file...");
+        
+        const responsePromise = page.waitForResponse(res => 
+            res.url().includes('cdn.discordapp.com/attachments') && res.status() === 200,
+            { timeout: 120000 } // Giving it 2 minutes to process
+        );
 
-                fs.writeFileSync(fileName, assetData.data);
+        const response = await responsePromise;
 
-                // Wait 2 seconds to be safe
-                await sleep(2000); 
-            }
+        if (response) {
+            const buffer = await response.body();
+            // Try to get filename from URL or default to bundle_id
+            const urlParts = response.url().split('/');
+            const originalName = urlParts[urlParts.length - 1].split('?')[0];
+            const fileName = originalName || `bundle_${bundleId}.obj`;
+
+            fs.writeFileSync(fileName, buffer);
+            console.log(`✅ SUCCESS: Saved file as ${fileName}`);
         }
 
-        console.log("✅ Finished successfully.");
-        
-        // Write a success log for records
-        fs.writeFileSync(path.join(logDir, 'status.txt'), 'success');
-
-    } catch (error) {
-        // 4. Critical: Write error to file so GitHub Actions "s_06" can save it
-        const errorMsg = `❌ Failed for Bundle ${bundleId}: ${error.message}\nStack: ${error.stack}`;
-        console.error(errorMsg);
-        fs.writeFileSync(path.join(logDir, 'error.txt'), errorMsg);
+    } catch (err) {
+        console.error("❌ Automation Error:", err.message);
+        // Save screenshot for GitHub Step s_06
+        await page.screenshot({ path: 'error_debug.png' });
+        fs.writeFileSync('logs/error_log.txt', err.stack);
         process.exit(1);
+    } finally {
+        await browser.close();
     }
 }
 
-downloadBundle();
+run();

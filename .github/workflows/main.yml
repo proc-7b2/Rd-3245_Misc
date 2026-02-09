@@ -27,13 +27,16 @@ jobs:
 
       - name: Run Downloader Script
         env:
-          # We use the '|' to ensure it's treated as a string even if empty
-          BUNDLE_ID: ${{ github.event.client_payload.bundle_id }}
+          # This fallback tries to find bundle_id anywhere in the payload
+          BUNDLE_ID: ${{ github.event.client_payload.bundle_id || github.event.client_payload.asset_id }}
         run: |
-          echo "DEBUG: Raw Payload is -> ${{ toJson(github.event.client_payload) }}"
-          echo "DEBUG: Extracted ID is -> $BUNDLE_ID"
+          echo "DEBUG: Entire Payload -> ${{ toJson(github.event.client_payload) }}"
+          if [ -z "$BUNDLE_ID" ]; then
+            echo "❌ ERROR: BUNDLE_ID is still empty!"
+            exit 1
+          fi
           node downloader.js
-
+          
       - name: Save Files to Repo
         run: |
           git config --global user.name "github-actions[bot]"

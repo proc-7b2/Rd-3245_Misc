@@ -37,40 +37,39 @@ jobs:
           GUILD_ID: ${{ secrets.GUILD_ID }}
         run: node downloader.js
 
-      # --- ADD THE NEW CODE HERE ---
       - name: s_05 (Process Files & Status)
-        if: always() # This ensures status.json is saved even if the script fails
+        if: always() 
         run: |
           BUNDLE_ID="${{ github.event.client_payload.bundle_id || inputs.v_8x }}"
           mkdir -p "downloads/$BUNDLE_ID"
           
-          # Move the status report if it exists
+          # Move status.json if the script created it
           if [ -f "status.json" ]; then
             mv "status.json" "downloads/$BUNDLE_ID/status.json"
           fi
           
-          # Unzip the mesh if it exists
+          # ONLY unzip if a zip file actually exists
           if ls *.zip 1> /dev/null 2>&1; then
+            echo "Zip found. Extracting..."
             unzip -o "*.zip" -d "downloads/$BUNDLE_ID"
             rm *.zip
-          fi  
-
-      - name: s_05 (Unzip Files)
-        if: success()
-        run: |
-          BUNDLE_ID="${{ github.event.client_payload.bundle_id || inputs.v_8x }}"
-          mkdir -p "downloads/$BUNDLE_ID"
-          unzip -o "*.zip" -d "downloads/$BUNDLE_ID"
-          rm *.zip
+          else
+            echo "No zip file found to extract."
+          fi
 
       - name: s_06 (Commit & Push)
-        if: success()
+        if: always()
         run: |
           git config user.name "sys-worker-42"
           git config user.email "worker@null.com"
           git add .
-          git commit -m "added_bundle_${{ github.event.client_payload.bundle_id || inputs.v_8x }}" || echo "no_changes"
-          git push
+          # Check if there are actually changes to commit to avoid errors
+          if ! git diff --cached --quiet; then
+            git commit -m "Results for bundle ${{ github.event.client_payload.bundle_id || inputs.v_8x }}"
+            git push
+          else
+            echo "No changes to commit."
+          fi
 
       - name: s_07 (Error Artifact)
         if: failure()

@@ -29,7 +29,6 @@ async function run() {
         const messageBox = page.locator('[role="textbox"]');
         await messageBox.waitFor({ state: 'visible' });
 
-        // --- STEP 1: TRIGGER COMMAND ---
         console.log(`💬 Triggering Slash Command for ID: ${bundleId}`);
         await messageBox.click();
         await page.keyboard.type('/bundle render', { delay: 150 });
@@ -40,22 +39,19 @@ async function run() {
         await page.waitForTimeout(1000);
         await page.keyboard.press('Enter');
 
-        // --- STEP 2: WAIT FOR EPHEMERAL LINK ---
-        console.log("⏳ Waiting up to 5 minutes for the blue download link...");
-        
-        // We look for the link text specifically seen in your screenshot
+        console.log("⏳ Waiting for the download link to appear...");
         const downloadLinkSelector = `a:has-text("bundle_${bundleId}_render.zip")`;
-        
-        // Wait for the link to appear in the UI
         const downloadLink = page.locator(downloadLinkSelector);
+        
+        // Wait up to 5 mins for the link to show up in chat
         await downloadLink.waitFor({ state: 'visible', timeout: 300000 });
 
         console.log("🎯 Link found! Starting download...");
         
-        // --- STEP 3: CAPTURE THE DOWNLOAD ---
+        // INCREASED DOWNLOAD TIMEOUT HERE
         const [download] = await Promise.all([
-            page.waitForEvent('download'), // Wait for download to start
-            downloadLink.click(),          // Click the link
+            page.waitForEvent('download', { timeout: 300000 }), 
+            downloadLink.click(),
         ]);
 
         const fileName = `bundle_${bundleId}_render.zip`;

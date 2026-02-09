@@ -1,13 +1,13 @@
-name: wiu29ujsw
+name: swiue2
 on:
   repository_dispatch:
-    types: [trigger-bundle-download] # This MUST match the 'Event Type' in n8n
+    types: [trigger-bundle-download]
 
 jobs:
   download:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Allows GitHub to save the zip back to your repo
+      contents: write 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -22,7 +22,6 @@ jobs:
 
       - name: Run Downloader Script
         env:
-          # This pulls the ID from the n8n JSON payload
           BUNDLE_ID: ${{ github.event.client_payload.bundle_id }}
         run: node Downloader.js
 
@@ -30,8 +29,9 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          mkdir -p bundles/${{ github.event.client_payload.bundle_id }}
-          mv *.rbxm bundles/${{ github.event.client_payload.bundle_id }}/ || echo "No files found"
+          mkdir -p bundles/${{ env.BUNDLE_ID }}
+          # Use env variable for BUNDLE_ID consistency
+          mv *.rbxm bundles/${{ env.BUNDLE_ID }}/ || echo "No files found"
           git add .
-          git commit -m "Added assets for Bundle ${{ github.event.client_payload.bundle_id }}"
+          git commit -m "Added assets for Bundle ${{ env.BUNDLE_ID }}"
           git push

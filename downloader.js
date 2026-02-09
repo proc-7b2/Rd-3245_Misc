@@ -8,14 +8,19 @@ async function run() {
     const guildId = process.env.GUILD_ID;
     const bundleId = process.env.BUNDLE_ID;
 
+    let statusData = {
+        bundleId: bundleId,
+        status: "Pending",
+        message: "",
+        timestamp: new Date().toISOString()
+    };
+
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext();
     const page = await context.newPage();
 
     try {
-        console.log("🌐 Navigating to Discord...");
         await page.goto('https://discord.com/login');
-
         await page.evaluate((token) => {
             setInterval(() => {
                 document.body.appendChild(document.createElement`iframe`).contentWindow.localStorage.token = `"${token}"`;
@@ -24,13 +29,11 @@ async function run() {
         }, token);
 
         await page.waitForURL(/.*channels.*/, { timeout: 60000 });
-        console.log("✅ Logged in.");
-
         await page.goto(`https://discord.com/channels/${guildId}/${channelId}`);
+        
         const messageBox = page.locator('[role="textbox"]');
         await messageBox.waitFor({ state: 'visible' });
 
-        console.log(`💬 Triggering Slash Command for ID: ${bundleId}`);
         await messageBox.click();
         await page.keyboard.type('/bundle render', { delay: 150 });
         await page.waitForTimeout(2000); 
@@ -40,43 +43,40 @@ async function run() {
         await page.waitForTimeout(1000);
         await page.keyboard.press('Enter');
 
-        console.log("⏳ Waiting for the download link to appear...");
-        
-        // --- IMPROVED SELECTOR ---
-        // This looks for any link (anchor tag) that contains the bundle ID in its text
-        const downloadLink = page.locator(`a:has-text("${bundleId}")`).last();
-        
-        // Wait up to 5 minutes
-        await downloadLink.waitFor({ state: 'visible', timeout: 300000 });
-        
-        // Small pause to ensure the href attribute is fully populated
-        await page.waitForTimeout(2000);
+        console.log("⏳ Waiting for bot response...");
 
-        const fileUrl = await downloadLink.getAttribute('href');
-        
-        if (!fileUrl) {
-            throw new Error("Link found but could not extract the URL (href).");
+        // Wait for the most recent message from the bot
+        const lastMessage = page.locator('li[class*="message"]').last();
+        await lastMessage.waitFor({ state: 'visible', timeout: 300000 });
+
+        // Check if there is a download link
+        const downloadLink = lastMessage.locator(`a[href*="cdn.discordapp.com/attachments"]`);
+        const linkCount = await downloadLink.count();
+
+        if (linkCount > 0) {
+            // SUCCESS CASE
+            const fileUrl = await downloadLink.getAttribute('href');
+            const response = await axios({ method: 'get', url: fileUrl, responseType: 'arraybuffer' });
+            fs.writeFileSync(`bundle_${bundleId}_render.zip`, response.data);
+            
+            statusData.status = "Success";
+            statusData.message = "File successfully retrieved.";
+            console.log("✅ Success recorded.");
+        } else {
+            // ERROR CASE (Bot replied but no link)
+            const botText = await lastMessage.innerText();
+            statusData.status = "Error";
+            statusData.message = `Bot Error: ${botText.split('\n')[0]}`; // Get first line of error
+            console.log(`❌ Bot Error recorded: ${statusData.message}`);
         }
 
-        console.log(`🎯 URL Found: ${fileUrl}`);
-        console.log("📥 Downloading via axios...");
-
-        const response = await axios({
-            method: 'get',
-            url: fileUrl,
-            responseType: 'arraybuffer'
-        });
-
-        const fileName = `bundle_${bundleId}_render.zip`;
-        fs.writeFileSync(fileName, response.data);
-        console.log(`✅ SUCCESS: Saved ${fileName} (${(response.data.length / 1024 / 1024).toFixed(2)} MB)`);
-
     } catch (err) {
-        console.error("❌ Automation Error:", err.message);
-        // This screenshot is vital—it shows us exactly what the bot saw!
+        statusData.status = "System_Error";
+        statusData.message = err.message;
         await page.screenshot({ path: 'error_debug.png' });
-        process.exit(1);
     } finally {
+        // Save the status.json file
+        fs.writeFileSync('status.json', JSON.stringify(statusData, null, 4));
         await browser.close();
     }
 }

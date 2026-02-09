@@ -25,7 +25,7 @@ jobs:
       - name: Install Dependencies
         run: npm install axios
 
-      - name: Run Downloader Script
+      - name: Run downloader Script
         env:
           BUNDLE_ID: ${{ github.event.client_payload.bundle_id }}
         run: node Downloader.js

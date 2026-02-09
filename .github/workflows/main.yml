@@ -1,49 +1,70 @@
-name: sjdiwji
+name: b_92_backup_sys
 on:
-  workflow_dispatch: # <--- ADD THIS
-    inputs:
-      bundle_id:
-        description: 'Roblox Bundle ID'
-        required: true
-  repository_dispatch: # Keep this if you still want n8n to use dispatch
+  # Allows n8n to trigger it
+  repository_dispatch:
     types: [trigger-bundle-download]
+  # Allows manual runs from GitHub UI
+  workflow_dispatch:
+    inputs:
+      v_8x:
+        description: "Roblox Bundle ID"
+        required: true
+        type: string
+      x_2q:
+        description: "Webhook Callback URL (Optional)"
+        required: false
+        type: string
 
 jobs:
-  download:
+  run_job_z8:
     runs-on: ubuntu-latest
     permissions:
-      contents: write 
+      contents: write
+
     steps:
-      - name: Checkout Repository
+      - name: s_01 (Checkout)
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: s_02 (Setup Node)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
 
-      - name: Install Dependencies
+      - name: s_03 (Install Axios)
         run: npm install axios
 
-      - name: Run Downloader Script
+      - name: s_04 (Downloader Environment)
         env:
-          # This fallback tries to find bundle_id anywhere in the payload
-          BUNDLE_ID: ${{ github.event.client_payload.bundle_id || github.event.client_payload.asset_id }}
+          # Logic to handle both trigger types:
+          BUNDLE_ID: ${{ github.event.client_payload.bundle_id || inputs.v_8x }}
         run: |
-          echo "DEBUG: Entire Payload -> ${{ toJson(github.event.client_payload) }}"
-          if [ -z "$BUNDLE_ID" ]; then
-            echo "❌ ERROR: BUNDLE_ID is still empty!"
-            exit 1
-          fi
+          echo "🚀 Processing ID: $BUNDLE_ID"
           node downloader.js
-          
-      - name: Save Files to Repo
+
+      - name: s_05 (Commit & Push)
+        if: success()
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          mkdir -p bundles/${{ env.BUNDLE_ID }}
-          # Use env variable for BUNDLE_ID consistency
-          mv *.rbxm bundles/${{ env.BUNDLE_ID }}/ || echo "No files found"
+          git config user.name "sys-worker-42"
+          git config user.email "worker@null.com"
+          mkdir -p bundles/${{ github.event.client_payload.bundle_id || inputs.v_8x }}
+          mv *.rbxm bundles/${{ github.event.client_payload.bundle_id || inputs.v_8x }}/ || echo "n_a"
           git add .
-          git commit -m "Added assets for Bundle ${{ env.BUNDLE_ID }}"
-          git push
+          git commit -m "upd_$(date +%s)" || echo "no_changes"
+          git push || echo "push_failed"
+
+      - name: s_06 (Artifacts on Error)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: download_error_log
+          path: logs/ # Make sure your script logs errors here
+
+      - name: s_07 (Callback to n8n)
+        if: always()
+        run: |
+          CALLBACK_URL="${{ inputs.x_2q || github.event.client_payload.callback_url }}"
+          if [ -z "$CALLBACK_URL" ] || [ "$CALLBACK_URL" == "null" ]; then
+            echo "no_callback_url"
+          else
+            curl -sS -X POST "$CALLBACK_URL" -d '{"status":"finished"}'
+          fi

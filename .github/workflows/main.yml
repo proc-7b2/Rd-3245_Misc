@@ -28,7 +28,7 @@ jobs:
       - name: Run downloader Script
         env:
           BUNDLE_ID: ${{ github.event.client_payload.bundle_id }}
-        run: node Downloader.js
+        run: node downloader.js
 
       - name: Save Files to Repo
         run: |

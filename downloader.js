@@ -1,6 +1,5 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
-const path = require('path');
 
 async function run() {
     const token = process.env.DISCORD_TOKEN;
@@ -8,7 +7,6 @@ async function run() {
     const guildId = process.env.GUILD_ID;
     const bundleId = process.env.BUNDLE_ID;
 
-    // Create logs folder for debugging
     if (!fs.existsSync('logs')) fs.mkdirSync('logs');
 
     const browser = await chromium.launch({ headless: true });
@@ -19,58 +17,56 @@ async function run() {
         console.log("🌐 Navigating to Discord...");
         await page.goto('https://discord.com/login');
 
-        // Inject Token to bypass the login screen
+        // Login via Token
         await page.evaluate((token) => {
-            function login(token) {
-                setInterval(() => {
-                    document.body.appendChild(document.createElement`iframe`).contentWindow.localStorage.token = `"${token}"`;
-                }, 50);
-                setTimeout(() => { location.reload(); }, 2500);
-            }
-            login(token);
+            setInterval(() => {
+                document.body.appendChild(document.createElement`iframe`).contentWindow.localStorage.token = `"${token}"`;
+            }, 50);
+            setTimeout(() => { location.reload(); }, 2500);
         }, token);
 
-        // Wait for Discord UI to load
         await page.waitForURL(/.*channels.*/, { timeout: 60000 });
-        console.log("✅ Logged in to Alt Account.");
+        console.log("✅ Logged in.");
 
-        // Go to the specific Server/Channel
         await page.goto(`https://discord.com/channels/${guildId}/${channelId}`);
         
-        // Find the chat box
+        // 1. Click the Chat Box
         const messageBox = page.locator('[role="textbox"]');
         await messageBox.waitFor({ state: 'visible' });
+        await messageBox.click();
 
-        console.log(`💬 Sending Command: !download ${bundleId}`);
-        await messageBox.fill(`!download ${bundleId}`);
-        await page.keyboard.press('Enter');
+        // 2. Type the Slash Command
+        console.log(`💬 Triggering Slash Command: /bundle render id:${bundleId}`);
+        await page.keyboard.type(`/bundle render id:${bundleId}`, { delay: 100 });
 
-        // ⏳ Wait for the bot to upload a file (intercepting the CDN link)
+        // 3. Wait for and Select the Command from the Pop-up
+        // Discord shows a suggestion list; we press Enter to confirm the selection
+        await page.waitForTimeout(1500); // Wait for the menu to pop up
+        await page.keyboard.press('Enter'); 
+        await page.waitForTimeout(500);
+        await page.keyboard.press('Enter'); // Press Enter again to send it
+
         console.log("⏳ Waiting for bot response file...");
         
+        // 4. Intercept the File Download
         const responsePromise = page.waitForResponse(res => 
             res.url().includes('cdn.discordapp.com/attachments') && res.status() === 200,
-            { timeout: 120000 } // Giving it 2 minutes to process
+            { timeout: 150000 } 
         );
 
         const response = await responsePromise;
+        const buffer = await response.body();
+        
+        // Extract filename from URL
+        const urlParts = response.url().split('/');
+        const fileName = urlParts[urlParts.length - 1].split('?')[0] || `render_${bundleId}.obj`;
 
-        if (response) {
-            const buffer = await response.body();
-            // Try to get filename from URL or default to bundle_id
-            const urlParts = response.url().split('/');
-            const originalName = urlParts[urlParts.length - 1].split('?')[0];
-            const fileName = originalName || `bundle_${bundleId}.obj`;
-
-            fs.writeFileSync(fileName, buffer);
-            console.log(`✅ SUCCESS: Saved file as ${fileName}`);
-        }
+        fs.writeFileSync(fileName, buffer);
+        console.log(`✅ SUCCESS: Saved as ${fileName}`);
 
     } catch (err) {
         console.error("❌ Automation Error:", err.message);
-        // Save screenshot for GitHub Step s_06
         await page.screenshot({ path: 'error_debug.png' });
-        fs.writeFileSync('logs/error_log.txt', err.stack);
         process.exit(1);
     } finally {
         await browser.close();

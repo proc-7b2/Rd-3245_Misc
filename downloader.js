@@ -16,6 +16,7 @@ async function run() {
         console.log("🌐 Navigating to Discord...");
         await page.goto('https://discord.com/login');
 
+        // Inject Token
         await page.evaluate((token) => {
             setInterval(() => {
                 document.body.appendChild(document.createElement`iframe`).contentWindow.localStorage.token = `"${token}"`;
@@ -30,6 +31,7 @@ async function run() {
         const messageBox = page.locator('[role="textbox"]');
         await messageBox.waitFor({ state: 'visible' });
 
+        // Trigger Slash Command
         console.log(`💬 Triggering Slash Command for ID: ${bundleId}`);
         await messageBox.click();
         await page.keyboard.type('/bundle render', { delay: 150 });
@@ -41,16 +43,15 @@ async function run() {
         await page.keyboard.press('Enter');
 
         console.log("⏳ Waiting for the download link to appear...");
-        // This finds the blue link in the "Only you can see this" message
+        // This selector targets the specific link text seen in your screenshot
         const downloadLinkSelector = `a[href*="cdn.discordapp.com/attachments"]:has-text("bundle_${bundleId}")`;
         const downloadLink = page.locator(downloadLinkSelector);
         
         await downloadLink.waitFor({ state: 'visible', timeout: 300000 });
         
-        // --- FAST DOWNLOAD FIX ---
+        // GRAB URL DIRECTLY (Fast Fix)
         const fileUrl = await downloadLink.getAttribute('href');
-        console.log(`🎯 URL Found: ${fileUrl}`);
-        console.log("📥 Downloading via axios...");
+        console.log(`🎯 Link found! Starting download via axios...`);
 
         const response = await axios({
             method: 'get',

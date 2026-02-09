@@ -26,7 +26,7 @@ jobs:
 
       - name: s_03 (Deps)
         run: |
-          npm install playwright
+          npm install playwright axios
           npx playwright install --with-deps chromium
 
       - name: s_04 (Run Automator)
@@ -43,7 +43,7 @@ jobs:
           BUNDLE_ID="${{ github.event.client_payload.bundle_id || inputs.v_8x }}"
           mkdir -p "downloads/$BUNDLE_ID"
           unzip -o "*.zip" -d "downloads/$BUNDLE_ID"
-          rm *.zip # Cleanup the zip to keep repo clean
+          rm *.zip
 
       - name: s_06 (Commit & Push)
         if: success()

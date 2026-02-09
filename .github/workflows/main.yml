@@ -1,9 +1,7 @@
 name: b_92_backup_sys
 on:
-  # Allows n8n to trigger it
   repository_dispatch:
     types: [trigger-bundle-download]
-  # Allows manual runs from GitHub UI
   workflow_dispatch:
     inputs:
       v_8x:
@@ -11,7 +9,7 @@ on:
         required: true
         type: string
       x_2q:
-        description: "Webhook Callback URL (Optional)"
+        description: "Callback URL (Optional)"
         required: false
         type: string
 
@@ -30,41 +28,43 @@ jobs:
         with:
           node-version: 20
 
-      - name: s_03 (Install Axios)
-        run: npm install axios
-
-      - name: s_04 (Downloader Environment)
-        env:
-          # Logic to handle both trigger types:
-          BUNDLE_ID: ${{ github.event.client_payload.bundle_id || inputs.v_8x }}
+      - name: s_03 (Install Dependencies)
         run: |
-          echo "🚀 Processing ID: $BUNDLE_ID"
-          node downloader.js
+          npm install playwright axios
+          npx playwright install --with-deps chromium
+
+      - name: s_04 (Run Discord Automator)
+        env:
+          # Maps n8n payload or manual input to BUNDLE_ID
+          BUNDLE_ID: ${{ github.event.client_payload.bundle_id || inputs.v_8x }}
+          # Uses the secrets from your screenshot
+          DISCORD_TOKEN: ${{ secrets.ALT_DISCORD_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          GUILD_ID: ${{ secrets.GUILD_ID }}
+        run: node downloader.js
 
       - name: s_05 (Commit & Push)
         if: success()
         run: |
           git config user.name "sys-worker-42"
           git config user.email "worker@null.com"
-          mkdir -p bundles/${{ github.event.client_payload.bundle_id || inputs.v_8x }}
-          mv *.rbxm bundles/${{ github.event.client_payload.bundle_id || inputs.v_8x }}/ || echo "n_a"
           git add .
           git commit -m "upd_$(date +%s)" || echo "no_changes"
           git push || echo "push_failed"
 
-      - name: s_06 (Artifacts on Error)
+      - name: s_06 (Error Debug)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: download_error_log
-          path: logs/ # Make sure your script logs errors here
+          name: discord-error-logs
+          path: |
+            error_debug.png
+            logs/
 
-      - name: s_07 (Callback to n8n)
+      - name: s_07 (Callback)
         if: always()
         run: |
           CALLBACK_URL="${{ inputs.x_2q || github.event.client_payload.callback_url }}"
-          if [ -z "$CALLBACK_URL" ] || [ "$CALLBACK_URL" == "null" ]; then
-            echo "no_callback_url"
-          else
+          if [ -n "$CALLBACK_URL" ] && [ "$CALLBACK_URL" != "null" ]; then
             curl -sS -X POST "$CALLBACK_URL" -d '{"status":"finished"}'
           fi

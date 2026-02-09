@@ -1,6 +1,11 @@
-name: swiue2
+name: sjdiwji
 on:
-  repository_dispatch:
+  workflow_dispatch: # <--- ADD THIS
+    inputs:
+      bundle_id:
+        description: 'Roblox Bundle ID'
+        required: true
+  repository_dispatch: # Keep this if you still want n8n to use dispatch
     types: [trigger-bundle-download]
 
 jobs:
